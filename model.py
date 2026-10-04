@@ -65,8 +65,10 @@ class MCTS:
         policy_probs = F.softmax(policy_logits, dim=1).cpu().numpy()[0]
         move_priors = {}; total_prior = 0
         for move in valid_moves:
-            if isinstance(move, list): start_pos_tuple = move[0][0]
-            else: start_pos_tuple = move[0]
+            if isinstance(move, (list, tuple)) and len(move) > 0 and isinstance(move[0], tuple) and len(move[0]) == 2 and isinstance(move[0][0], tuple):
+                start_pos_tuple = move[0][0]
+            else:
+                start_pos_tuple = move[0]
             start_pos_idx = start_pos_tuple[0] * BOARD_SIZE + start_pos_tuple[1]
             prior = policy_probs[start_pos_idx]
             key = tuple(move) if isinstance(move, list) else move
