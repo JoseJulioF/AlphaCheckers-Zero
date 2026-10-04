@@ -1,5 +1,3 @@
---- START OF FILE evalminimax.py ---
-
 # THE INVERTED ARENA: Minimax (First Player) vs. Our AlphaZero Master (Second Player).
 # The definitive experiment.
 

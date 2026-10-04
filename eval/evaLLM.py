@@ -1,5 +1,3 @@
---- START OF FILE evaLLM.py ---
-
 # BATTLE ARENA SCRIPT: Checkers Master (AlphaZero) vs. Large Language Model (LLM via Groq).
 
 import torch

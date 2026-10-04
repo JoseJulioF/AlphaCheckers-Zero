@@ -1,5 +1,3 @@
---- START OF FILE eval.py ---
-
 # Test script to challenge the trained Checkers Model.
 # It loads the model and allows you to play against it locally.
 
