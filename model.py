@@ -42,7 +42,7 @@ class MCTS:
             search_path = [root]
             while node.children:
                 move, node = self._select_child(node)
-                search_board = self.game.apply_move(search_board, move); search_player *= -1; search_path.append(node)
+                search_board = self.game.apply_move(search_board, move, track_special_endgame=False); search_player *= -1; search_path.append(node)
             value = self.game.check_game_over(search_board, search_player)
             if value is None and node.visits == 0: value = self._expand_and_evaluate(node, search_board, search_player)
             elif value is None: value = node.get_value()
@@ -65,8 +65,10 @@ class MCTS:
         policy_probs = F.softmax(policy_logits, dim=1).cpu().numpy()[0]
         move_priors = {}; total_prior = 0
         for move in valid_moves:
-            if isinstance(move, list): start_pos_tuple = move[0][0]
-            else: start_pos_tuple = move[0]
+            if isinstance(move, (list, tuple)) and len(move) > 0 and isinstance(move[0], tuple) and len(move[0]) == 2 and isinstance(move[0][0], tuple):
+                start_pos_tuple = move[0][0]
+            else:
+                start_pos_tuple = move[0]
             start_pos_idx = start_pos_tuple[0] * BOARD_SIZE + start_pos_tuple[1]
             prior = policy_probs[start_pos_idx]
             key = tuple(move) if isinstance(move, list) else move
