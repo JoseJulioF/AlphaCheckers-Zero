@@ -11,16 +11,18 @@ class TestBrazilianSpecialEndgames(unittest.TestCase):
     def _empty_board(self):
         return np.zeros((8, 8), dtype=np.int8)
 
-    def _play_five_moves_each_side(self, board):
+    def _play_five_moves_each_side(self, board, white_cycle=((5, 0), (4, 1)), black_cycle=((2, 5), (3, 4))):
         player = 1
         for ply in range(10):
             valid_moves = self.game.get_valid_moves(board, player)
             self.assertTrue(valid_moves, f"Sem jogadas válidas no meio-lance {ply + 1}")
 
             if player == 1:
-                expected_move = ((5, 0), (4, 1)) if board[5, 0] == 2 else ((4, 1), (5, 0))
+                from_sq, to_sq = (white_cycle[0], white_cycle[1]) if board[white_cycle[0]] == 2 else (white_cycle[1], white_cycle[0])
             else:
-                expected_move = ((2, 5), (3, 4)) if board[2, 5] == -2 else ((3, 4), (2, 5))
+                from_sq, to_sq = (black_cycle[0], black_cycle[1]) if board[black_cycle[0]] == -2 else (black_cycle[1], black_cycle[0])
+
+            expected_move = (from_sq, to_sq)
 
             self.assertIn(expected_move, valid_moves, f"Movimento esperado {expected_move} não encontrado.")
             board = self.game.apply_move(board, expected_move)
@@ -71,7 +73,7 @@ class TestBrazilianSpecialEndgames(unittest.TestCase):
         board[5, 2] = 2
         board[6, 5] = 2
         board[2, 2] = -2
-        self._play_five_moves_each_side(board)
+        self._play_five_moves_each_side(board, black_cycle=((2, 2), (3, 3)))
 
     def test_2_damas_1_homem_vs_1_dama(self):
         board = self._empty_board()
