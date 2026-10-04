@@ -42,7 +42,7 @@ class MCTS:
             search_path = [root]
             while node.children:
                 move, node = self._select_child(node)
-                search_board = self.game.apply_move(search_board, move); search_player *= -1; search_path.append(node)
+                search_board = self.game.apply_move(search_board, move, track_special_endgame=False); search_player *= -1; search_path.append(node)
             value = self.game.check_game_over(search_board, search_player)
             if value is None and node.visits == 0: value = self._expand_and_evaluate(node, search_board, search_player)
             elif value is None: value = node.get_value()
