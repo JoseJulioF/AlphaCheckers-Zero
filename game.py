@@ -161,9 +161,9 @@ class Checkers:
 
     def apply_move(self, board, move, track_special_endgame=True):
         b_ = np.copy(board)
-        is_jump_chain = isinstance(move, (list, tuple)) and len(move) > 0 and \
+        is_sequence = isinstance(move, (list, tuple)) and len(move) > 0 and \
             isinstance(move[0], tuple) and len(move[0]) == 2 and isinstance(move[0][0], tuple)
-        sub_moves = tuple(move) if is_jump_chain else (move,)
+        sub_moves = tuple(move) if is_sequence else (move,)
         captured_positions = []
 
         for (r1, c1), (r2, c2) in sub_moves:
@@ -178,14 +178,13 @@ class Checkers:
             b_[r2, c2] = piece
             b_[r1, c1] = 0
 
-            if abs(r2 - r1) >= 2:
-                rr, cc = r1 + dr, c1 + dc
-                while (rr, cc) != (r2, c2):
-                    if b_[rr, cc] * player < 0 and (rr, cc) not in captured_positions:
-                        captured_positions.append((rr, cc))
-                        break
-                    rr += dr
-                    cc += dc
+            rr, cc = r1 + dr, c1 + dc
+            while (rr, cc) != (r2, c2):
+                if b_[rr, cc] * player < 0 and (rr, cc) not in captured_positions:
+                    captured_positions.append((rr, cc))
+                    break
+                rr += dr
+                cc += dc
 
         for rr, cc in captured_positions:
             b_[rr, cc] = 0
