@@ -8,6 +8,7 @@ from collections import deque
 import random
 import time
 import os
+import argparse
 from game import BOARD_SIZE, Checkers
 
 # --- Seeds for Reproducibility ---
@@ -89,8 +90,10 @@ class MCTS:
         policy_probs = F.softmax(policy_logits, dim=1).cpu().numpy()[0]
         move_priors = {}; total_prior = 0
         for move in valid_moves:
-            if isinstance(move, list): start_pos_tuple = move[0][0]
-            else: start_pos_tuple = move[0]
+            if isinstance(move, (list, tuple)) and len(move) > 0 and isinstance(move[0], tuple) and len(move[0]) == 2 and isinstance(move[0][0], tuple):
+                start_pos_tuple = move[0][0]
+            else:
+                start_pos_tuple = move[0]
             start_pos_idx = start_pos_tuple[0] * BOARD_SIZE + start_pos_tuple[1]
             prior = policy_probs[start_pos_idx]
             key = tuple(move) if isinstance(move, list) else move
@@ -112,8 +115,10 @@ class CheckersDataset(Dataset):
         policy_tensor = torch.zeros(BOARD_SIZE * BOARD_SIZE)
         total_prob = 0
         for move, prob in policy_map.items():
-            if isinstance(move, list) or (isinstance(move, tuple) and isinstance(move[0], tuple) and isinstance(move[0][0], tuple)): start_pos_tuple = move[0][0]
-            else: start_pos_tuple = move[0]
+            if isinstance(move, (list, tuple)) and len(move) > 0 and isinstance(move[0], tuple) and len(move[0]) == 2 and isinstance(move[0][0], tuple):
+                start_pos_tuple = move[0][0]
+            else:
+                start_pos_tuple = move[0]
             start_idx = start_pos_tuple[0] * BOARD_SIZE + start_pos_tuple[1]
             policy_tensor[start_idx] += prob; total_prob += prob
         if total_prob > 0: policy_tensor /= total_prob
@@ -150,42 +155,63 @@ def load_checkpoint(filename, model, optimizer):
         print("=> No checkpoint found. Starting from scratch.")
         return 0, model, optimizer, deque(maxlen=REPLAY_BUFFER_SIZE)
 
-# --- Main Loop ---
-model = PolicyValueNetwork().to(DEVICE)
-optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+def run_training(num_episodes=NUM_EPISODES, self_play_games=SELF_PLAY_GAMES, max_moves=150, save_interval=SAVE_INTERVAL):
+    model = PolicyValueNetwork().to(DEVICE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
-start_episode, model, optimizer, replay_buffer = load_checkpoint(CHECKPOINT_FILE, model, optimizer)
+    start_episode, model, optimizer, replay_buffer = load_checkpoint(CHECKPOINT_FILE, model, optimizer)
+    if start_episode >= num_episodes:
+        print(f"Nothing to run: checkpoint episode {start_episode} >= target episodes {num_episodes}.")
+        return
 
-print("Starting training cycle... This may take many hours.")
-for episode in range(start_episode, NUM_EPISODES):
-    start_time = time.time(); model.eval()
-    for _ in range(SELF_PLAY_GAMES):
-        game = Checkers()
-        game_history = []; board, player = game.get_initial_board(), 1; move_count = 0
-        while move_count < 150:
-            result = game.check_game_over(board, player)
-            if result is not None: final_value = -result; break
-            mcts = MCTS(game, model); valid_moves, policy = mcts.run(board, player)
-            if not valid_moves: final_value = -1.0; break
-            policy_map = {m: p for m, p in zip(valid_moves, policy)}
-            game_history.append((board, player, policy_map))
-            move_idx = np.random.choice(len(valid_moves), p=policy)
-            move = valid_moves[move_idx]; board = game.apply_move(board, move); player *= -1; move_count += 1
-        else: final_value = 0.0
-        for b, p, pol_map in game_history:
-            value = final_value if p != player else -final_value
-            replay_buffer.append((b, p, pol_map, value))
-    if len(replay_buffer) > BATCH_SIZE * 10:
-        dataset = CheckersDataset(list(random.sample(replay_buffer, BATCH_SIZE * 10)))
-        dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-        avg_loss_p, avg_loss_v = train_net(model, optimizer, dataloader)
-        print(f"Ep. {episode+1}/{NUM_EPISODES} | Buffer: {len(replay_buffer)} | Time: {time.time()-start_time:.1f}s | Loss P: {avg_loss_p:.4f} | Loss V: {avg_loss_v:.4f}")
-    else:
-        print(f"Ep. {episode+1}/{NUM_EPISODES} | Buffer: {len(replay_buffer)} | Time: {time.time()-start_time:.1f}s | Collecting data...")
-    if (episode + 1) % SAVE_INTERVAL == 0:
-        state = {'episode': episode + 1, 'model_state': model.state_dict(), 'optimizer_state': optimizer.state_dict(), 'replay_buffer': replay_buffer}
-        save_checkpoint(state, CHECKPOINT_FILE)
+    print("Starting training cycle... This may take many hours.")
+    for episode in range(start_episode, num_episodes):
+        start_time = time.time(); model.eval()
+        for _ in range(self_play_games):
+            game = Checkers()
+            game_history = []; board, player = game.get_initial_board(), 1; move_count = 0
+            while move_count < max_moves:
+                result = game.check_game_over(board, player)
+                if result is not None: final_value = -result; break
+                mcts = MCTS(game, model); valid_moves, policy = mcts.run(board, player)
+                if not valid_moves: final_value = -1.0; break
+                policy_map = {m: p for m, p in zip(valid_moves, policy)}
+                game_history.append((board, player, policy_map))
+                move_idx = np.random.choice(len(valid_moves), p=policy)
+                move = valid_moves[move_idx]; board = game.apply_move(board, move); player *= -1; move_count += 1
+            else: final_value = 0.0
+            for b, p, pol_map in game_history:
+                value = final_value if p != player else -final_value
+                replay_buffer.append((b, p, pol_map, value))
+        if len(replay_buffer) > BATCH_SIZE * 10:
+            dataset = CheckersDataset(list(random.sample(replay_buffer, BATCH_SIZE * 10)))
+            dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+            avg_loss_p, avg_loss_v = train_net(model, optimizer, dataloader)
+            print(f"Ep. {episode+1}/{num_episodes} | Buffer: {len(replay_buffer)} | Time: {time.time()-start_time:.1f}s | Loss P: {avg_loss_p:.4f} | Loss V: {avg_loss_v:.4f}")
+        else:
+            print(f"Ep. {episode+1}/{num_episodes} | Buffer: {len(replay_buffer)} | Time: {time.time()-start_time:.1f}s | Collecting data...")
+        if save_interval > 0 and (episode + 1) % save_interval == 0:
+            state = {'episode': episode + 1, 'model_state': model.state_dict(), 'optimizer_state': optimizer.state_dict(), 'replay_buffer': replay_buffer}
+            save_checkpoint(state, CHECKPOINT_FILE)
 
-torch.save(model.state_dict(), "checkers_master_final.pth")
+    torch.save(model.state_dict(), "checkers_master_final.pth")
+    print("\nTraining cycle completed.")
 
-print("\nTraining cycle completed.")
+
+def main():
+    parser = argparse.ArgumentParser(description="AlphaCheckers-Zero trainer")
+    parser.add_argument("--episodes", type=int, default=NUM_EPISODES, help="Target total episodes")
+    parser.add_argument("--self-play-games", type=int, default=SELF_PLAY_GAMES, help="Self-play games per episode")
+    parser.add_argument("--max-moves", type=int, default=150, help="Max half-moves per self-play game")
+    parser.add_argument("--save-interval", type=int, default=SAVE_INTERVAL, help="Checkpoint save interval (0 disables)")
+    args = parser.parse_args()
+    run_training(
+        num_episodes=args.episodes,
+        self_play_games=args.self_play_games,
+        max_moves=args.max_moves,
+        save_interval=args.save_interval
+    )
+
+
+if __name__ == "__main__":
+    main()
